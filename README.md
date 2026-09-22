@@ -144,7 +144,9 @@ scripts/
   derive-address.ts           # print wallet addresses without syncing
   request-funds.ts            # faucet helper
   wait-for-dust.ts            # block until fee (DUST) is spendable
+  watch-funding.sh            # watch the indexer for a faucet drip (no wallet sync)
   deploy.ts / verify.ts       # CLI runners
+  render-screenshots.py       # regenerate docs/screenshots/*.png from captures
   acceptance-audit.sh         # clean-room audit: npm run audit
 docs/SECURITY.md              # threat model and design rationale
 compose.yml                   # local devnet + proof server (Docker)
@@ -172,8 +174,8 @@ compact --version   # compact 0.5.2
 ## Installation
 
 ```bash
-git clone <this repository>
-cd sealed-bid
+git clone https://github.com/oluwaseyi1996-netizen/moon-level1.git
+cd moon-level1
 npm ci                  # reproducible install from package-lock.json
 ./scripts/install-compact.sh
 npm run compact         # generate contracts/managed/ (committed, but re-generatable)
