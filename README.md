@@ -9,10 +9,31 @@
 
 Written in [Compact](https://docs.midnight.network/build/compact/syntax), the
 zero-knowledge smart-contract language, and deployed with the official
-`midnight-js` stack. Open English auctions suffer from sniping and shill
-bidding; a sealed-bid auction fixes both, but on a public ledger "sealed" must
-mean *cryptographically* sealed. That is what this project implements and its
-test suite proves.
+`midnight-js` stack.
+
+## The product idea
+
+Procurement auctions, acquisition bids, and spectrum or asset sales all fail in
+the same way on transparent ledgers: every bid is visible the moment it is
+made, so rivals snipe at the last second, sellers push prices up with shill
+bids, and bidders coordinate off-ledger. SealedBid is the missing primitive — a
+drop-in sealed-bid auction where bidders learn nothing about each other's
+offers until the window closes, the auctioneer cannot see (or fake) any bid
+amount, and the outcome is computed by a zero-knowledge circuit that anyone can
+audit. One deployment runs one auction: point it at a reserve price and a
+schedule, collect commitments, open them, and settle — with every losing amount
+kept private forever.
+
+## Screenshots
+
+Compilation with the official tooling — every circuit is compiled to real
+zk-SNARK proving/verifying keys:
+
+![Compact compile output showing all 5 circuits](docs/screenshots/compile.png)
+
+Deployment and independent on-chain verification:
+
+![Deploy and verify output showing the real contract address](docs/screenshots/deploy.png)
 
 ## How it works
 
@@ -54,6 +75,48 @@ sealed until revealed; a committed bid can never be cancelled away; every
 identity may place exactly one sealed bid; a bid that never opens correctly
 contributes nothing to the outcome; the reserve price is enforced
 (`>=` wins, strictly-greater overtakes, ties keep the incumbent).
+
+## Public state vs. private witness
+
+A Compact contract splits reality into two worlds, and the security of SealedBid
+depends on keeping the border between them exact.
+
+**Public ledger state** (`export ledger ...` in `sealed-bid.compact`) is visible
+to everyone forever — the indexer, every bidder, any observer:
+
+| Public cell | Contents | Why it is safe to publish |
+| --- | --- | --- |
+| `phase` | `BIDDING / REVEAL / FINALIZED / CANCELLED` | Lifecycle progress, no bid data |
+| `auctioneer`, `commitments`, `bidderCommitment` | Hash-derived pseudonyms, `H(domain, amount, nonce, bidderId)` commitments | One-way hashes; without `amount` and `nonce` a commitment cannot be checked or opened |
+| `revealedCommitments` | Which commitments opened | Participation is inherently public at reveal |
+| `highestBid`, `highestBidder`, `winningAmount`, `winner` | The outcome | An auction must declare a result — this is the only amount ever disclosed |
+| `reservePrice`, `bidDeadline`, `revealDeadline`, counters | Auction terms | Public rules of the game |
+
+**Private witness state** lives only in the prover's process (`witness localSecretKey()`
+plus the per-call arguments `amount` and `nonce` in `revealBid`). Witnesses are
+TypeScript functions run off-chain by the bidder themselves; the circuit consumes
+their values to build a proof, and the proof — never the values — goes on-chain:
+
+* `secretKey: Uint8Array` — the 32-byte secret each participant holds. Every
+  on-chain identity is a domain-separated hash of it (`deriveBidderId`,
+  `deriveAuctioneerId`), so the ledger never stores it and leaking the ledger
+does not reveal it.
+* `amount` — the bid value in `revealBid`. The circuit proves
+  `H(domain, amount, nonce, bidderId)` equals the commitment registered during
+  bidding, and discloses only two derived bits (`amount >= reservePrice`,
+  `amount > highestBid`) plus the amount itself *only* when it becomes the new
+  best bid. A losing amount never reaches any ledger cell — asserted by tests
+  that serialise the entire raw ledger state and search it for the amounts.
+* `nonce` — the fresh 32-byte blinding value that makes a commitment
+  unguessable; without it, a suspected amount could be verified off-chain
+  against a public commitment.
+
+The rule the contract follows everywhere: **a value may be written to the
+ledger only through `disclose(...)`, and every `disclose` is a deliberate
+privacy decision** — pseudonyms, commitments, outcome bits, the winning bid —
+never raw witnesses. The `src/test/sim/security.sim.test.ts` suite falsifies
+this claim continuously: if any bid amount, secret key, or nonce were to leak
+into the public state, those tests fail.
 
 ## Repository layout
 
@@ -185,27 +248,40 @@ MIDNIGHT_NETWORK=preview npx vite-node scripts/derive-address.ts
 The first wallet sync on a public network can take 10–20 minutes (the wallet
 scans the whole zswap index); the deploy script waits for it.
 
-## Deployed contract record
+## Deployed contract records
 
-The contract was deployed to the **Midnight Preview test network** with the
-repository's own tooling (`npm run deploy:preview`) and independently
-re-verified with `npm run verify:preview`.
+### Local devnet (deployed and verified)
+
+Deployed with the repository's own tooling (`npm run deploy:local`) against the
+local Docker devnet, then independently re-verified through a separate
+indexer-only code path (`npm run verify:local`) — all seven checks `PASS`
+(see the screenshot above).
+
+| Field | Value |
+| --- | --- |
+| Network | `local` (network id `undeployed`) |
+| Contract address | `4e871744514c56fe83dc7dc2cbe862fc1a6b549c94ca6617d49d3e9609f8249d` |
+| Deploy transaction id | `00816bb53a75bfc66cca327a74ffa7a5e35d035158ed51690058bedea5c72a53ab` |
+| Constructor args | `reservePrice=1000`, `bidDeadline=1790177624`, `revealDeadline=1790264024` |
+| Compiler | `compact` 0.31.1, language version 0.23 |
+| Verification | `npm run verify:local` — `VERIFIED`, state re-read from the devnet indexer |
+
+`deployment.local.json` (git-ignored) holds the full record. Reproduce with:
+`npm run env:up && npm run wait:dust && npm run deploy:local && npm run verify:local`.
+
+### Preview testnet
+
+A Preview deployment (`npm run deploy:preview`) is prepared: the deployer
+wallet is configured, its address derived, and the full sync + drip + deploy +
+verify workflow documented above. The wallet must first be topped up through
+the captcha-gated human faucet (see *Funding notes*); the record is filled in
+here once the deployment lands.
 
 | Field | Value |
 | --- | --- |
 | Network | `preview` (network id `preview`) |
-| Contract address | `PREVIEW_CONTRACT_ADDRESS_PLACEHOLDER` |
-| Deploy transaction id | `PREVIEW_DEPLOY_TX_PLACEHOLDER` |
-| Deployer coin public key | `PREVIEW_CPK_PLACEHOLDER` |
-| Constructor args | `reservePrice=1000`, `bidDeadline=PREVIEW_BID_DL_PLACEHOLDER`, `revealDeadline=PREVIEW_REVEAL_DL_PLACEHOLDER` |
-| Compiler | `compact` 0.31.1, language version 0.23 |
-| Deployed at | `PREVIEW_DEPLOYED_AT_PLACEHOLDER` |
-| Verification | `npm run verify:preview` — `VERIFIED` (state re-read from `https://indexer.preview.midnight.network`) |
-
-`deployment.preview.json` in the repository root holds the same record (it is
-git-ignored, but the values above are public and safe to share). To reproduce:
-run `npm run deploy:preview` with your own funded wallet — you will get your own
-fresh deployment, verifiable the same way.
+| Contract address | _pending faucet funding — see above_ |
+| Verification | `npm run verify:preview` |
 
 ## Clean-room acceptance audit
 
