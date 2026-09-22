@@ -53,8 +53,29 @@ export const ensureFunded = async (
     logger.info(`Requesting funds from the '${config.name}' faucet if the wallet is empty...`);
   }
 
-  const balance = await waitForFunds(wallet.wallet, env, useFaucet, wallet.unshieldedKeystore);
+  let balance: bigint;
+  try {
+    balance = await waitForFunds(wallet.wallet, env, useFaucet, wallet.unshieldedKeystore);
+  } catch (error) {
+    // The faucet can legitimately refuse a programmatic drip (its public API is
+    // captcha-gated). That must not crash the run here: re-read the balance
+    // without the faucet and let the caller decide with an actionable message.
+    const detail = error instanceof Error ? error.message : String(error);
+    logger.warn(`Faucet request did not succeed (${detail}); continuing with the current balance.`);
+    balance = await waitForFunds(wallet.wallet, env, false, wallet.unshieldedKeystore);
+  }
+
   logger.info(`NIGHT balance on '${config.name}': ${balance}`);
+
+  if (balance === 0n && config.faucetPage) {
+    throw new Error(
+      `Wallet is unfunded on '${config.name}'. Fund the address with tNIGHT via ` +
+        `${config.faucetPage} (the public drip API requires a browser-solved captcha), ` +
+        `then re-run. The faucet must fill the unshielded address printed by ` +
+        `scripts/derive-address.ts.`,
+    );
+  }
+
   return balance;
 };
 
