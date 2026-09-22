@@ -1,0 +1,31 @@
+# Dependencies
+/node_modules
+
+# Build output
+/dist
+/coverage
+*.tsbuildinfo
+
+# Private wallet secrets - NEVER commit these
+.env
+.env.local
+.env.preview
+.env.preprod
+.env.*.local
+*.seed
+*.mnemonic
+
+# Midnight local state / scratch
+/midnight-level-db
+/logs
+/.compact
+
+# Local deployment cache and workspace scratch
+deployment.*.json
+/scratch
+
+# Editor / OS noise
+.DS_Store
+.idea
+.vscode/*
+!.vscode/extensions.json

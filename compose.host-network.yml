@@ -1,0 +1,38 @@
+# Override that runs the whole local devnet on the Docker *host* network.
+#
+#   docker compose -f compose.yml -f compose.host-network.yml up -d --wait
+#   npm run env:up            # same thing (this override is the default)
+#
+# Why this exists
+# ---------------
+# The proof server must download the Midnight structured reference strings (SRS)
+# from https://srs.midnight.network the first time it starts. Some sandboxes and
+# CI runners use a user-defined Docker bridge whose embedded DNS cannot forward
+# upstream queries, and some block sibling-container traffic on user-defined
+# bridges entirely. Either failure produces symptoms like:
+#
+#   Failed to fetch data from https://srs.midnight.network/... after 3 attempts
+#   create SubxtNode: cannot create reconnecting subxt RPC client: Connection timeout exceeded
+#
+# Host networking sidesteps both by using the host's network stack and resolver
+# directly. The services talk to each other over 127.0.0.1.
+#
+#   * Linux only. On Docker Desktop for macOS/Windows use the portable
+#     `compose.yml` instead: `npm run env:up:bridge`.
+#   * No port mappings are needed, since each service binds its port on the host.
+
+services:
+  proof-server:
+    network_mode: host
+    ports: !override []
+
+  indexer:
+    network_mode: host
+    ports: !override []
+    environment:
+      APP__INFRA__NODE__URL: 'ws://127.0.0.1:9944'
+      APP__INFRA__SPO_NODE__URL: 'ws://127.0.0.1:9944'
+
+  node:
+    network_mode: host
+    ports: !override []

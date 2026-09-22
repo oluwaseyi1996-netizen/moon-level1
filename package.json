@@ -1,0 +1,67 @@
+{
+  "name": "sealed-bid",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "SealedBid - a privacy-preserving sealed-bid (commit-reveal) auction smart contract for the Midnight network, written in Compact.",
+  "license": "MIT",
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "scripts": {
+    "compact": "compact compile contracts/sealed-bid.compact contracts/managed/sealed-bid",
+    "typecheck": "tsc --noEmit",
+    "test": "npm run test:sim",
+    "test:sim": "vitest run --config vitest.sim.config.ts",
+    "test:e2e": "vitest run --config vitest.e2e.config.ts",
+    "test:e2e:local": "MIDNIGHT_NETWORK=local vitest run --config vitest.e2e.config.ts",
+    "test:e2e:preview": "MIDNIGHT_NETWORK=preview vitest run --config vitest.e2e.config.ts",
+    "test:e2e:preprod": "MIDNIGHT_NETWORK=preprod vitest run --config vitest.e2e.config.ts",
+    "env:up": "npm run env:up:host",
+    "env:down": "docker compose down -v --remove-orphans",
+    "proof:up": "npm run proof:up:host",
+    "proof:down": "docker compose -f compose.yml -f compose.host-network.yml stop proof-server",
+    "env:up:host": "docker compose -f compose.yml -f compose.host-network.yml up -d --wait",
+    "proof:up:host": "docker compose -f compose.yml -f compose.host-network.yml up -d --wait proof-server",
+    "env:up:bridge": "docker compose up -d --wait",
+    "proof:up:bridge": "docker compose up -d --wait proof-server",
+    "wait:dust": "vite-node scripts/wait-for-dust.ts",
+    "deploy:local": "MIDNIGHT_NETWORK=local vite-node scripts/deploy.ts",
+    "deploy:preview": "MIDNIGHT_NETWORK=preview vite-node scripts/deploy.ts",
+    "deploy:preprod": "MIDNIGHT_NETWORK=preprod vite-node scripts/deploy.ts",
+    "verify:local": "MIDNIGHT_NETWORK=local vite-node scripts/verify.ts",
+    "verify:preview": "MIDNIGHT_NETWORK=preview vite-node scripts/verify.ts",
+    "verify:preprod": "MIDNIGHT_NETWORK=preprod vite-node scripts/verify.ts",
+    "audit": "bash scripts/acceptance-audit.sh",
+    "ci": "npm run typecheck && npm run compact && npm run test:sim"
+  },
+  "dependencies": {
+    "@midnight-ntwrk/compact-runtime": "0.16.0",
+    "@midnight-ntwrk/midnight-js-contracts": "4.1.1",
+    "@midnight-ntwrk/midnight-js-http-client-proof-provider": "4.1.1",
+    "@midnight-ntwrk/midnight-js-indexer-public-data-provider": "4.1.1",
+    "@midnight-ntwrk/midnight-js-level-private-state-provider": "4.1.1",
+    "@midnight-ntwrk/midnight-js-network-id": "4.1.1",
+    "@midnight-ntwrk/midnight-js-node-zk-config-provider": "4.1.1",
+    "@midnight-ntwrk/midnight-js-protocol": "4.1.1",
+    "@midnight-ntwrk/midnight-js-types": "4.1.1",
+    "@midnight-ntwrk/midnight-js-utils": "4.1.1",
+    "@midnight-ntwrk/testkit-js": "4.1.1",
+    "@midnight-ntwrk/wallet-sdk": "1.2.0",
+    "pino": "^9.0.0",
+    "pino-pretty": "^13.0.0",
+    "rxjs": "^7.8.2",
+    "ws": "^8.14.2"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/ws": "^8.5.9",
+    "typescript": "^5.9.3",
+    "vite": "^8.3.0",
+    "vite-node": "^6.0.0",
+    "vitest": "^4.1.11"
+  },
+  "overrides": {
+    "@midnight-ntwrk/wallet-sdk": "1.2.0"
+  }
+}
