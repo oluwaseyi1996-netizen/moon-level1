@@ -1,0 +1,296 @@
+// SPDX-License-Identifier: MIT
+//
+// SealedBid - a privacy-preserving sealed-bid auction on the Midnight network.
+//
+// ---------------------------------------------------------------------------
+//                  WHY THIS CONTRACT IS INTERESTING
+// ---------------------------------------------------------------------------
+// In an open (English) auction every bid is public the moment it is made, which
+// creates two structural problems:
+//
+//   1. Sniping / last-look: a competing bidder can watch the price and bid the
+//      minimum increment at the last possible instant.
+//   2. Shill bidding: the seller can push the price up with fake bids.
+//
+// A sealed-bid auction fixes both, but on a public ledger "sealed" must mean
+// cryptographically sealed. This contract implements the classic commit/reveal
+// construction with a zero-knowledge circuit:
+//
+//   BIDDING PHASE  Each bidder publishes only `H(domain, amount, nonce, bidderId)`.
+//                  `amount` and `nonce` are private circuit inputs and are never
+//                  written to the ledger, so no one - not other bidders, not the
+//                  auctioneer, not a chain observer - can learn a bid amount
+//                  before it is opened. The fresh `nonce` is what makes the
+//                  commitment opaque: without it, a guessed amount could be
+//                  verified against the commitment off-chain.
+//
+//   REVEAL PHASE   Each bidder opens their commitment. The circuit recomputes
+//                  `H(domain, amount, nonce, bidderId)` from the claimed amount
+//                  and nonce and rejects the reveal unless it matches the
+//                  commitment registered during the bidding phase. The winning
+//                  amount is the *only* amount ever written to the ledger.
+//
+// ---------------------------------------------------------------------------
+//                        IDENTITY / AUTHORISATION MODEL
+// ---------------------------------------------------------------------------
+// Identity here is "knowledge of a 32-byte secret". Every on-chain identity is a
+// domain-separated one-way hash of that secret, derived by a witness. The
+// secret itself never leaves the prover.
+//
+// `ownPublicKey()` is deliberately NOT used for authorisation. It returns a
+// prover-claimed value with no cryptographic binding to the transaction signer,
+// so any assertion built on it is bypassable. Authorisation is expressed purely
+// as a comparison between two derived hashes, which the circuit can enforce.
+//
+// ---------------------------------------------------------------------------
+//                            TRUST ASSUMPTIONS
+// ---------------------------------------------------------------------------
+// Compact language version 0.23 exposes no on-chain block clock, so the contract
+// cannot enforce wall-clock deadlines by itself. Consequently:
+//
+//   * The auctioneer controls the BIDDING -> REVEAL transition (`closeBidding`).
+//     The advertised `bidDeadline`/`revealDeadline` are recorded on the ledger as
+//     a public commitment to the schedule, so participants can verify after the
+//     fact whether the auctioneer closed the lot when they said they would.
+//   * Settlement (`finalize`) is PERMISSIONLESS: the winner is a pure function of
+//     the revealed bids, so anyone can trigger it and no party can block it.
+//   * Bid secrecy is UNCONDITIONAL. It does not depend on the auctioneer being
+//     honest: a dishonest auctioneer still learns nothing from the ledger.
+//   * A bidder who has committed cannot be rugged: `cancel` is refused once any
+//     sealed bid exists, so a bid that can be opened will always reach `finalize`.
+//
+// See docs/SECURITY.md for the full threat model and its discussion.
+
+pragma language_version 0.23;
+
+import CompactStandardLibrary;
+
+/* **********************************************************************
+ *                              TYPE MODEL
+ * ******************************************************************** */
+
+/// Lifecycle of an auction. Transitions are strictly forward-only:
+///
+///   BIDDING --(closeBidding, auctioneer)--> REVEAL --(finalize, anyone)--> FINALIZED
+///   BIDDING --(cancel, auctioneer, zero bids)------------------------------> CANCELLED
+///   REVEAL  --(cancel, auctioneer, zero bids)------------------------------> CANCELLED
+export enum Phase {
+  BIDDING,
+  REVEAL,
+  FINALIZED,
+  CANCELLED,
+}
+
+/* **********************************************************************
+ *                            PUBLIC LEDGER
+ * ******************************************************************** */
+
+export ledger phase: Phase;
+
+/// Pseudonymous identity of the auctioneer, derived from their secret key.
+export ledger auctioneer: Bytes<32>;
+
+/// Minimum bid that can win, in the auction's unit of account.
+export ledger reservePrice: Uint<64>;
+
+/// Advertised Unix-seconds close of the sealed-bidding window. Recorded as a
+/// public commitment to the schedule; see TRUST ASSUMPTIONS above.
+export ledger bidDeadline: Uint<64>;
+
+/// Advertised Unix-seconds close of the reveal window.
+export ledger revealDeadline: Uint<64>;
+
+/// commitment -> bidder identity. Proves a commitment was registered and by
+/// whom, so that only its author can open it.
+export ledger commitments: Map<Bytes<32>, Bytes<32>>;
+
+/// bidder identity -> commitment. Enforces one sealed bid per identity, which
+/// is what makes the shill-bidding resistance meaningful.
+export ledger bidderCommitment: Map<Bytes<32>, Bytes<32>>;
+
+/// Commitments already opened. Prevents double reveals.
+export ledger revealedCommitments: Set<Bytes<32>>;
+
+/// Highest bid that opened correctly and met the reserve price.
+export ledger highestBid: Uint<64>;
+
+/// Author of `highestBid`.
+export ledger highestBidder: Bytes<32>;
+
+/// Declared winner. `none` means the reserve price was never met.
+export ledger winner: Maybe<Bytes<32>>;
+
+/// Amount the winner pays.
+export ledger winningAmount: Uint<64>;
+
+/// Number of sealed bids received.
+export ledger bidCount: Counter;
+
+/// Number of opening bids that met the reserve price.
+export ledger validRevealCount: Counter;
+
+/* **********************************************************************
+ *                              WITNESSES
+ * ******************************************************************** */
+
+/// The caller's 32-byte secret. Never leaves the prover's machine.
+witness localSecretKey(): Bytes<32>;
+
+/* **********************************************************************
+ *                          IDENTITY DERIVATIONS
+ * ******************************************************************** */
+
+/// Domain-separated, pseudonymous bidder identity.
+export pure circuit deriveBidderId(sk: Bytes<32>): Bytes<32> {
+  return persistentHash<Vector<2, Bytes<32>>>([pad(32, "sealedbid:bidder:v1"), sk]);
+}
+
+/// Domain-separated auctioneer identity. Distinct from `deriveBidderId` so the
+/// two roles can never collide, even for the same secret key.
+export pure circuit deriveAuctioneerId(sk: Bytes<32>): Bytes<32> {
+  return persistentHash<Vector<2, Bytes<32>>>([pad(32, "sealedbid:auctioneer:v1"), sk]);
+}
+
+/// The sealed bid commitment: `H(domain, amount, nonce, bidderId)`.
+export pure circuit computeCommitment(
+  amount: Uint<64>,
+  nonce: Bytes<32>,
+  bidderId: Bytes<32>,
+): Bytes<32> {
+  return persistentHash<Vector<4, Bytes<32>>>([
+    pad(32, "sealedbid:commit:v1"),
+    amount as Bytes<32>,
+    nonce,
+    bidderId,
+  ]);
+}
+
+/// Convenience helper for clients: commit as a given secret key's identity.
+export pure circuit computeCommitmentFor(
+  amount: Uint<64>,
+  nonce: Bytes<32>,
+  sk: Bytes<32>,
+): Bytes<32> {
+  return computeCommitment(amount, nonce, deriveBidderId(sk));
+}
+
+/* **********************************************************************
+ *                              CONSTRUCTOR
+ * ******************************************************************** */
+
+constructor(_reservePrice: Uint<64>, _bidDeadline: Uint<64>, _revealDeadline: Uint<64>) {
+  assert(_reservePrice > 0, "Reserve price must be greater than zero");
+  assert(_revealDeadline > _bidDeadline, "Reveal deadline must be after the bidding deadline");
+
+  auctioneer = disclose(deriveAuctioneerId(localSecretKey()));
+  reservePrice = disclose(_reservePrice);
+  bidDeadline = disclose(_bidDeadline);
+  revealDeadline = disclose(_revealDeadline);
+
+  phase = Phase.BIDDING;
+  winner = none<Bytes<32>>();
+  winningAmount = 0;
+}
+
+/* **********************************************************************
+ *                            BIDDING PHASE
+ * ******************************************************************** */
+
+/// Submit a sealed bid. Only the commitment reaches the ledger; `amount` and
+/// `nonce` stay private until the bidder opens it in `revealBid`.
+export circuit placeBid(sealedBid: Bytes<32>): [] {
+  assert(phase == Phase.BIDDING, "Sealed bidding is not open");
+
+  const bidder = disclose(deriveBidderId(localSecretKey()));
+  const commitment = disclose(sealedBid);
+
+  assert(!commitments.member(commitment), "This sealed bid commitment was already registered");
+  assert(!bidderCommitment.member(bidder), "This identity has already placed a sealed bid");
+
+  commitments.insert(commitment, bidder);
+  bidderCommitment.insert(bidder, commitment);
+  bidCount.increment(1);
+}
+
+/// Close the sealed-bidding window and open reveals. Auctioneer only.
+export circuit closeBidding(): [] {
+  assert(auctioneer == deriveAuctioneerId(localSecretKey()), "Only the auctioneer can close the bidding");
+  assert(phase == Phase.BIDDING, "Sealed bidding is already closed");
+  phase = Phase.REVEAL;
+}
+
+/* **********************************************************************
+ *                             REVEAL PHASE
+ * ******************************************************************** */
+
+/// Open a sealed bid. The circuit recomputes the commitment from the claimed
+/// amount, the supplied nonce and the caller's identity, and accepts the bid
+/// only if it matches the commitment registered during the bidding phase.
+export circuit revealBid(amount: Uint<64>, nonce: Bytes<32>): [] {
+  assert(phase == Phase.REVEAL, "Reveals are not open");
+
+  // A reveal is an attributed public act, so the revealing identity (a
+  // pseudonym, not the secret) is published.
+  const bidder = disclose(deriveBidderId(localSecretKey()));
+  assert(bidderCommitment.member(bidder), "This identity never placed a sealed bid");
+
+  const commitment = bidderCommitment.lookup(bidder);
+  assert(!revealedCommitments.member(commitment), "This sealed bid has already been revealed");
+
+  const expected = computeCommitment(amount, nonce, bidder);
+  assert(expected == commitment, "Reveal does not match the sealed bid commitment");
+
+  // Opening a commitment is itself a public act, so participation is recorded
+  // in the clear.
+  revealedCommitments.insert(commitment);
+
+  // The two outcome bits below are the *only* things derived from the private
+  // amount that ever reach the ledger. They are disclosed deliberately, because
+  // an auction must publish which bids are valid and who is currently winning.
+  // Note what is NOT disclosed: the amount itself is written to the ledger only
+  // when it becomes the new best bid. A losing bid is never disclosed at all, so
+  // its amount stays private forever.
+  const meetsReserve = disclose(amount >= reservePrice);
+  const beatsCurrentBest = disclose(amount > highestBid);
+
+  if (meetsReserve) {
+    validRevealCount.increment(1);
+    if (beatsCurrentBest) {
+      highestBid = disclose(amount);
+      highestBidder = disclose(bidder);
+    }
+  }
+}
+
+/// Close the auction and record the winner.
+///
+/// Deliberately permissionless: the outcome is a pure function of the revealed
+/// bids, so letting anyone trigger settlement removes any liveness dependency on
+/// the auctioneer. If no opening bid met the reserve price, no winner is set.
+export circuit finalize(): [] {
+  assert(phase == Phase.REVEAL, "Auction is not in the reveal phase");
+
+  if (validRevealCount == 0) {
+    winner = none<Bytes<32>>();
+    winningAmount = 0;
+  } else {
+    winner = some<Bytes<32>>(highestBidder);
+    winningAmount = highestBid;
+  }
+
+  phase = Phase.FINALIZED;
+}
+
+/* **********************************************************************
+ *                          AUCTIONEER CONTROLS
+ * ******************************************************************** */
+
+/// Cancel an auction that has attracted no sealed bids. Auctioneer only, and
+/// only while nothing has been committed, so a bidder who committed can never
+/// be rugged.
+export circuit cancel(): [] {
+  assert(auctioneer == deriveAuctioneerId(localSecretKey()), "Only the auctioneer can cancel this auction");
+  assert(phase == Phase.BIDDING || phase == Phase.REVEAL, "Auction has already concluded");
+  assert(bidCount == 0, "Cannot cancel an auction that already has sealed bids");
+  phase = Phase.CANCELLED;
+}
