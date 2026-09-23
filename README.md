@@ -237,8 +237,11 @@ check it against the recorded manifest. The same flow works with `preprod` and
 ### Funding notes (Preview / Preprod)
 
 The wallet needs tNIGHT plus spendable DUST (the fee resource). Get tNIGHT from
-the human faucet page (linked in the `.env.*.example` files); the deploy
-scripts also attempt the programmatic drip endpoint. The faucet's public API is
+the human faucet page — for Preview, either
+[`faucet.preview.midnight.network`](https://faucet.preview.midnight.network/)
+or [`midnight-tmnight-preview.nethermind.dev`](https://midnight-tmnight-preview.nethermind.dev/)
+(also linked in the `.env.*.example` files); the deploy scripts additionally
+attempt the programmatic drip endpoint. The faucet's public API is
 Cloudflare-Turnstile-gated — a captcha solved in a browser — so programmatic
 drips without a browser session are refused by design; use the faucet page and
 paste the address printed by:
@@ -282,9 +285,15 @@ contract record is filled in here once the deployment lands.
 | Field | Value |
 | --- | --- |
 | Network | `preview` (network id `preview`) |
-| Deployer wallet address | `mn_addr_preview1x5ctnww6mxel9344f8cqah5apjy458qqrvcamg6dm8yv3e3q6rvsyhuak3` |
+| Deployer wallet address | `mn_addr_preview1htqw6xzegjm54fd3tnrfm3d2f4phgccllwkgx45prym4fvrxe4zqkc6wkg` |
 | Contract address | _pending faucet funding — see above_ |
 | Verification | `npm run verify:preview` |
+
+The deployer wallet was regenerated for this submission: its 32-byte seed is
+cryptographically random, lives only in the git-ignored `.env.preview`, and was
+never committed or transmitted anywhere. Its public address is stable and
+derivable from the seed with `scripts/derive-address.ts` — a full Preview wallet
+sync takes roughly 20 minutes, which the deploy script handles automatically.
 
 ## Clean-room acceptance audit
 
