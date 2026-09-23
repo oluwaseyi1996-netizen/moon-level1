@@ -274,14 +274,15 @@ indexer-only code path (`npm run verify:local`) — all seven checks `PASS`
 ### Preview testnet
 
 A Preview deployment (`npm run deploy:preview`) is prepared: the deployer
-wallet is configured, its address derived, and the full sync + drip + deploy +
-verify workflow documented above. The wallet must first be topped up through
-the captcha-gated human faucet (see *Funding notes*); the record is filled in
-here once the deployment lands.
+wallet is configured, its public address is recorded below, and the full sync +
+drip + deploy + verify workflow is documented above. The wallet must first be
+topped up through the captcha-gated human faucet (see *Funding notes*); the
+contract record is filled in here once the deployment lands.
 
 | Field | Value |
 | --- | --- |
 | Network | `preview` (network id `preview`) |
+| Deployer wallet address | `mn_addr_preview1x5ctnww6mxel9344f8cqah5apjy458qqrvcamg6dm8yv3e3q6rvsyhuak3` |
 | Contract address | _pending faucet funding — see above_ |
 | Verification | `npm run verify:preview` |
 
