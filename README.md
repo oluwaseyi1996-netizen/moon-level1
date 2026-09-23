@@ -262,9 +262,9 @@ indexer-only code path (`npm run verify:local`) — all seven checks `PASS`
 | Field | Value |
 | --- | --- |
 | Network | `local` (network id `undeployed`) |
-| Contract address | `4e871744514c56fe83dc7dc2cbe862fc1a6b549c94ca6617d49d3e9609f8249d` |
-| Deploy transaction id | `00816bb53a75bfc66cca327a74ffa7a5e35d035158ed51690058bedea5c72a53ab` |
-| Constructor args | `reservePrice=1000`, `bidDeadline=1790177624`, `revealDeadline=1790264024` |
+| Contract address | `9acb94bcb5fd64ad1a2972f05e3d83a06ee55e8b197aa4bcafbbd21abd4e5a25` |
+| Deploy transaction id | `00d651ef2b32302f87f07f4684f9bb92b7b6e685353a21b9afa002dce37b7a6d02` |
+| Constructor args | `reservePrice=1000`, `bidDeadline=1790245673`, `revealDeadline=1790332073` |
 | Compiler | `compact` 0.31.1, language version 0.23 |
 | Verification | `npm run verify:local` — `VERIFIED`, state re-read from the devnet indexer |
 
