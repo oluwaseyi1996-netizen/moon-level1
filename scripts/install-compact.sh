@@ -38,17 +38,18 @@ WORK_DIR="$(mktemp -d)"
 trap 'rm -rf "${WORK_DIR}"' EXIT
 
 echo "==> Downloading ${ASSET} (${TAG})"
-curl -sSLf -o "${WORK_DIR}/compact.tar.xz"      "${BASE_URL}/${ASSET}.tar.xz"
-curl -sSLf -o "${WORK_DIR}/compact.tar.xz.sha256" "${BASE_URL}/${ASSET}.tar.xz.sha256"
+# Keep the upstream asset filename: the published .sha256 file references it.
+curl -sSLf -o "${WORK_DIR}/${ASSET}.tar.xz"      "${BASE_URL}/${ASSET}.tar.xz"
+curl -sSLf -o "${WORK_DIR}/${ASSET}.tar.xz.sha256" "${BASE_URL}/${ASSET}.tar.xz.sha256"
 
 echo "==> Verifying checksum"
-( cd "${WORK_DIR}" && sha256sum -c compact.tar.xz.sha256 ) || {
+( cd "${WORK_DIR}" && sha256sum -c "${ASSET}.tar.xz.sha256" ) || {
   echo "Checksum verification FAILED - refusing to install." >&2
   exit 1
 }
 
 echo "==> Extracting"
-tar -xJf "${WORK_DIR}/compact.tar.xz" -C "${WORK_DIR}"
+tar -xJf "${WORK_DIR}/${ASSET}.tar.xz" -C "${WORK_DIR}"
 
 mkdir -p "${COMPACT_INSTALL_DIR}"
 install -m 0755 "${WORK_DIR}/${ASSET}/compact" "${COMPACT_INSTALL_DIR}/compact"
