@@ -86,23 +86,49 @@ def render(path: str, title: str, lines: list[tuple[str, str]]) -> None:
     print(f'wrote {path} ({img_w}x{img_h})')
 
 
+CIRCUIT_RE = re.compile(r'^circuit "([a-zA-Z]+)" \(k=(\d+), rows=(\d+)\)$')
+
+
+def settled_circuit_lines(raw_path: str) -> list[str]:
+    """The settled `circuit "name" (k=…, rows=…)` lines of a compile capture,
+    in the order the compiler emitted them. Progress-spin variants (which carry
+    trailing spinner characters) do not match and are dropped."""
+    raw = open(raw_path, 'rb').read().decode('utf-8', 'replace')
+    clean = strip_ansi(raw)
+    found: list[str] = []
+    for p in re.split(r'[\r\n]+', clean):
+        line = re.sub(r'\s+', ' ', p).strip()
+        if CIRCUIT_RE.match(line) and line not in found:
+            found.append(line)
+    return found
+
+
+def require_captures(paths: list[str]) -> None:
+    missing = [p for p in paths if not __import__('os').path.exists(p)]
+    if missing:
+        raise SystemExit(
+            'missing capture(s): ' + ', '.join(missing) +
+            ". Produce them with: script -qec 'npm run compact' /tmp/tty.raw ; "
+            "script -qec 'npm run deploy:local' /tmp/deploy.raw ; "
+            "script -qec 'npm run verify:local' /tmp/verify.raw"
+        )
+
+
 def main() -> None:
     # ---- compile screenshot: real `npm run compact` capture (/tmp/tty.raw) --
-    circuit_lines = [
-        ('Compiling 5 circuits:', FG),
-        ('  circuit "cancel" (k=13, rows=4215)', GREEN),
-        ('  circuit "closeBidding" (k=13, rows=4182)', GREEN),
-        ('  circuit "finalize" (k=8, rows=176)', GREEN),
-        ('  circuit "placeBid" (k=13, rows=4461)', GREEN),
-        ('  circuit "revealBid" (k=14, rows=10819)', GREEN),
-    ]
+    require_captures(['/tmp/tty.raw', '/tmp/deploy.raw', '/tmp/verify.raw'])
+    circuits = settled_circuit_lines('/tmp/tty.raw')
+    if len(circuits) != 5:
+        raise SystemExit(f'expected 5 settled circuit lines in /tmp/tty.raw, got {len(circuits)}')
     compile_lines = [
         ('$ npm run compact', DIM),
         ('', FG),
         ('> sealed-bid@1.0.0 compact', FG),
         ('> compact compile contracts/sealed-bid.compact contracts/managed/sealed-bid', FG),
         ('', FG),
-        *circuit_lines,
+        ('Compiling 5 circuits:', FG),
+        ('', FG),
+        *[(f'  {c}', GREEN) for c in circuits],
         ('', FG),
         ('exit code 0', DIM),
     ]

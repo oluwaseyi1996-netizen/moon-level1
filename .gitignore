@@ -29,3 +29,6 @@ deployment.*.json
 .idea
 .vscode/*
 !.vscode/extensions.json
+
+# Python cache (scripts/render-screenshots.py)
+__pycache__/
