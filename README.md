@@ -137,14 +137,14 @@ src/
   wallet.ts / providers.ts / funding.ts
   deploy.ts / verify.ts       # deployment + independent verification libraries
   test/
-    sim/                      # 79 in-process tests over the real circuits
+    sim/                      # 92 in-process tests over the real circuits
     e2e/                      # end-to-end suite against a real network
 scripts/
   install-compact.sh          # pinned Compact toolchain installer
   derive-address.ts           # print wallet addresses without syncing
   request-funds.ts            # faucet helper
   wait-for-dust.ts            # block until fee (DUST) is spendable
-  watch-funding.sh            # watch the indexer for a faucet drip (no wallet sync)
+  check-funding.ts            # confirm an address holds NIGHT, straight from the indexer
   deploy.ts / verify.ts       # CLI runners
   render-screenshots.py       # regenerate docs/screenshots/*.png from captures
   acceptance-audit.sh         # clean-room audit: npm run audit
@@ -196,7 +196,7 @@ runs typecheck + compile + the simulation suite.
 ## Testing
 
 ```bash
-npm run test:sim        # 79 tests, in-process, no Docker needed
+npm run test:sim        # 92 tests, in-process, no Docker needed
 npm run test:e2e:local  # full auction against the local Docker devnet
 ```
 
@@ -250,6 +250,21 @@ paste the address printed by:
 MIDNIGHT_NETWORK=preview npx vite-node scripts/derive-address.ts
 ```
 
+Check a drip landed before paying for that sync: this replays only the address's
+own unshielded history over the indexer subscription the wallet syncs with, so
+it answers in seconds and needs no secret when you pass the address:
+
+```bash
+npm run check:preview -- mn_addr_preview1...    # balance, drips, unspent outputs
+npm run check:preprod -- mn_addr_preprod1...
+FUNDING_CHECK_WAIT_MS=900000 npm run check:preview   # ...or watch until it lands
+```
+
+The address is public data, so the check needs no secret. It exits `0` when
+funded, `1` when the address genuinely holds no NIGHT, and `2` when the answer is
+inconclusive (unreachable indexer, or an address whose network prefix does not
+match `MIDNIGHT_NETWORK`).
+
 The first wallet sync on a public network can take 10–20 minutes (the wallet
 scans the whole zswap index); the deploy script waits for it.
 
@@ -277,17 +292,28 @@ indexer-only code path (`npm run verify:local`) — all seven checks `PASS`
 ### Preview testnet
 
 A Preview deployment (`npm run deploy:preview`) is prepared: the deployer
-wallet is configured, its public address is recorded below, and the full sync +
-drip + deploy + verify workflow is documented above. The wallet must first be
-topped up through the captcha-gated human faucet (see *Funding notes*); the
-contract record is filled in here once the deployment lands.
+wallet is configured and funded, its public address is recorded below, and the
+full sync + deploy + verify workflow is documented above. The contract record is
+filled in here once the deployment lands.
 
 | Field | Value |
 | --- | --- |
 | Network | `preview` (network id `preview`) |
 | Deployer wallet address | `mn_addr_preview1htqw6xzegjm54fd3tnrfm3d2f4phgccllwkgx45prym4fvrxe4zqkc6wkg` |
-| Contract address | _pending faucet funding — see above_ |
+| Deployer NIGHT balance | `10000000000` in two unspent outputs, read from the Preview indexer (tip `1023903`) |
+| Funding | faucet drips on 2026-09-23 17:59:24 UTC (tx `5222caf2…f8c204`), 2026-09-23 18:46:36 UTC (tx `35929c49…404347`, which spent the first output) and 2026-09-25 18:37:24 UTC (tx `caacdd0d…b7bf927`) |
+| Contract address | _pending deployment — see above_ |
 | Verification | `npm run verify:preview` |
+
+That funding is verifiable by anyone, with no secret, straight from the indexer:
+
+```bash
+npm run check:preview -- mn_addr_preview1htqw6xzegjm54fd3tnrfm3d2f4phgccllwkgx45prym4fvrxe4zqkc6wkg
+# FUNDED: ... holds 10000000000 NIGHT in 2 unspent output(s)
+```
+
+Re-read it before relying on the number: the balance tracks the faucet, so it
+changes as further drips land.
 
 The deployer wallet was regenerated for this submission: its 32-byte seed is
 cryptographically random, lives only in the git-ignored `.env.preview`, and was

@@ -32,6 +32,8 @@
     "verify:local": "MIDNIGHT_NETWORK=local vite-node scripts/verify.ts",
     "verify:preview": "MIDNIGHT_NETWORK=preview vite-node scripts/verify.ts",
     "verify:preprod": "MIDNIGHT_NETWORK=preprod vite-node scripts/verify.ts",
+    "check:preview": "MIDNIGHT_NETWORK=preview vite-node scripts/check-funding.ts",
+    "check:preprod": "MIDNIGHT_NETWORK=preprod vite-node scripts/check-funding.ts",
     "audit": "bash scripts/acceptance-audit.sh",
     "ci": "npm run typecheck && npm run compact && npm run test:sim"
   },
