@@ -17,7 +17,7 @@ import {
   type UnshieldedUtxo,
 } from '../../funding.js';
 
-const ADDRESS = 'mn_addr_preview1htqw6xzegjm54fd3tnrfm3d2f4phgccllwkgx45prym4fvrxe4zqkc6wkg';
+const ADDRESS = 'mn_addr_preview1l29h770qyj5jse7j8lua7443wp8n8zmsurwh4z9ujad98e5xw36qpchln9';
 const OTHER_ADDRESS = 'mn_addr_preview1qotherqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq';
 const FOREIGN_TOKEN = 'a'.repeat(64);
 

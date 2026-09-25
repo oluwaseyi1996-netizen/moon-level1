@@ -292,28 +292,26 @@ indexer-only code path (`npm run verify:local`) — all seven checks `PASS`
 ### Preview testnet
 
 A Preview deployment (`npm run deploy:preview`) is prepared: the deployer
-wallet is configured and funded, its public address is recorded below, and the
-full sync + deploy + verify workflow is documented above. The contract record is
-filled in here once the deployment lands.
+wallet is configured, its public address is recorded below, and the full sync +
+deploy + verify workflow is documented above. The contract record is filled in
+here once the deployment lands.
 
 | Field | Value |
 | --- | --- |
 | Network | `preview` (network id `preview`) |
-| Deployer wallet address | `mn_addr_preview1htqw6xzegjm54fd3tnrfm3d2f4phgccllwkgx45prym4fvrxe4zqkc6wkg` |
-| Deployer NIGHT balance | `10000000000` in two unspent outputs, read from the Preview indexer (tip `1023903`) |
-| Funding | faucet drips on 2026-09-23 17:59:24 UTC (tx `5222caf2…f8c204`), 2026-09-23 18:46:36 UTC (tx `35929c49…404347`, which spent the first output) and 2026-09-25 18:37:24 UTC (tx `caacdd0d…b7bf927`) |
+| Deployer wallet address | `mn_addr_preview1l29h770qyj5jse7j8lua7443wp8n8zmsurwh4z9ujad98e5xw36qpchln9` |
+| Deployer NIGHT balance | _pending faucet drip — the address supersedes the earlier deployer, whose seed was lost_ |
 | Contract address | _pending deployment — see above_ |
 | Verification | `npm run verify:preview` |
 
-That funding is verifiable by anyone, with no secret, straight from the indexer:
+The funding is verifiable by anyone, with no secret, straight from the indexer:
 
 ```bash
-npm run check:preview -- mn_addr_preview1htqw6xzegjm54fd3tnrfm3d2f4phgccllwkgx45prym4fvrxe4zqkc6wkg
-# FUNDED: ... holds 10000000000 NIGHT in 2 unspent output(s)
+npm run check:preview -- mn_addr_preview1l29h770qyj5jse7j8lua7443wp8n8zmsurwh4z9ujad98e5xw36qpchln9
 ```
 
-Re-read it before relying on the number: the balance tracks the faucet, so it
-changes as further drips land.
+It exits `0` once the drip lands (and `1` while the address is still empty), so
+re-run it rather than trusting the row above.
 
 The deployer wallet was regenerated for this submission: its 32-byte seed is
 cryptographically random, lives only in the git-ignored `.env.preview`, and was
