@@ -319,6 +319,31 @@ never committed or transmitted anywhere. Its public address is stable and
 derivable from the seed with `scripts/derive-address.ts` — a full Preview wallet
 sync takes roughly 20 minutes, which the deploy script handles automatically.
 
+### Preprod testnet
+
+The same workflow is prepared for Preprod (`npm run deploy:preprod`): the
+deployer wallet is configured, its public address is recorded below, and the
+contract record is filled in here once the deployment lands. tNIGHT comes from
+[`midnight-tmnight-preprod.nethermind.dev`](https://midnight-tmnight-preprod.nethermind.dev/)
+(the captcha-gated page — the drip API refuses browser-less calls).
+
+| Field | Value |
+| --- | --- |
+| Network | `preprod` (network id `preprod`) |
+| Deployer wallet address | `mn_addr_preprod1j2077pr7pftncakr5k6h69kyn6tfg39yyc5wrylj74djg3kl9ceq0rjr59` |
+| Deployer NIGHT balance | _pending faucet drip_ |
+| Contract address | _pending deployment_ |
+| Verification | `npm run verify:preprod` |
+
+Funding is verifiable without a secret, straight from the Preprod indexer:
+
+```bash
+npm run check:preprod -- mn_addr_preprod1j2077pr7pftncakr5k6h69kyn6tfg39yyc5wrylj74djg3kl9ceq0rjr59
+```
+
+Its deployer wallet was regenerated for this submission too: the seed is
+cryptographically random and lives only in the git-ignored `.env.preprod`.
+
 ## Clean-room acceptance audit
 
 ```bash
