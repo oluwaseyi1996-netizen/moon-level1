@@ -40,7 +40,11 @@ const makeWallet = (subject: BehaviorSubject<FakeState>) =>
 
 const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() } as never;
 
-const previewConfig = { name: 'preview', faucetPage: 'https://faucet.example/' } as never;
+const previewConfig = {
+  name: 'preview',
+  faucetApi: 'https://faucet.example/api/drips',
+  faucetPage: 'https://faucet.example/',
+} as never;
 
 beforeEach(() => {
   waitForFunds.mockReset();
@@ -83,13 +87,30 @@ describe('ensureFunded', () => {
     expect(balance).toEqual(5_000_000_000n);
   });
 
-  it('still reports a genuinely unfunded wallet', async () => {
+  it('covers a faucet drip that lands during the funding flow', async () => {
+    // The wallet started empty; the testkit's drip landed mid-flow, the NIGHT
+    // was registered for dust, and the returned balance read 0 until it settled.
     const subject = new BehaviorSubject<FakeState>(state(0n, 0));
-    waitForFunds.mockResolvedValue(0n);
+    waitForFunds.mockImplementation(async () => {
+      subject.next(state(0n, 0)); // drained by the dust registration
+      setTimeout(() => subject.next(state(5_000_000_000n, 1)), 50);
+      return 0n;
+    });
+
+    const balance = await ensureFunded(logger, makeWallet(subject), previewConfig, {} as never);
+    expect(balance).toEqual(5_000_000_000n);
+  });
+
+  it('still reports a genuinely unfunded wallet when the faucet refuses', async () => {
+    const subject = new BehaviorSubject<FakeState>(state(0n, 0));
+    // A refused drip: the first attempt throws, the retry without the faucet
+    // still sees nothing, and there is no registration in flight to wait for.
+    waitForFunds.mockRejectedValueOnce(new Error('captcha verification failed')).mockResolvedValue(0n);
 
     await expect(
       ensureFunded(logger, makeWallet(subject), previewConfig, {} as never),
     ).rejects.toThrow(/unfunded/i);
+    expect(waitForFunds).toHaveBeenCalledTimes(2);
   });
 
   it('accepts an already-settled funded wallet without waiting', async () => {

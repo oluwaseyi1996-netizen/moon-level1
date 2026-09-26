@@ -113,14 +113,19 @@ export const ensureFunded = async (
     logger.info(`Requesting funds from the '${config.name}' faucet if the wallet is empty...`);
   }
 
-  // Note the balance before the testkit's flow runs. If the wallet holds NIGHT
-  // now but reports none afterwards, the dip is the dust-registration side
-  // effect handled below, not an actually unfunded wallet.
+  // Gather the evidence that a funded wallet may be mid-registration: it held
+  // NIGHT before the testkit's flow ran, or a faucet drip landed during that
+  // flow. In either case the flow can end with a 0 balance while the dust
+  // registration it triggered is still settling, so capture the signals here
+  // and interpret the returned balance below.
   const hadNight = walletNightBalance(await Rx.firstValueFrom(wallet.wallet.state())) > 0n;
+  const faucetAvailable = config.faucetApi !== undefined;
+  let fundingFlowSucceeded = false;
 
   let balance: bigint;
   try {
     balance = await waitForFunds(wallet.wallet, env, useFaucet, wallet.unshieldedKeystore);
+    fundingFlowSucceeded = true;
   } catch (error) {
     // The faucet can legitimately refuse a programmatic drip (its public API is
     // captcha-gated). That must not crash the run here: re-read the balance
@@ -130,11 +135,14 @@ export const ensureFunded = async (
     balance = await waitForFunds(wallet.wallet, env, false, wallet.unshieldedKeystore);
   }
 
-  // When the wallet had NIGHT but `waitForFunds` registered its UTXOs for dust
-  // generation, that registration spends the NIGHT UTXO and the value it returns
-  // (and the state right after) can read 0 until the transaction settles. Wait
-  // for the settlement instead of misreporting the wallet as unfunded.
-  if (balance === 0n && hadNight) {
+  // `waitForFunds` registers the wallet's NIGHT UTXOs for dust generation when
+  // it holds none; that registration spends the NIGHT UTXO and the value it
+  // returns (and the wallet state right after) can read 0 until the transaction
+  // settles. A 0 is therefore ambiguous when the wallet was funded - either it
+  // held NIGHT before the flow, or a drip landed during it - so wait for the
+  // settlement instead of misreporting the wallet as unfunded. A faucet that
+  // refused the drip (the flow threw) leaves no such ambiguity.
+  if (balance === 0n && (hadNight || (faucetAvailable && fundingFlowSucceeded))) {
     balance = await awaitDustRegistrationSettlement(logger, wallet);
   }
 
