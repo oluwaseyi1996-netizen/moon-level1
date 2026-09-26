@@ -289,20 +289,22 @@ indexer-only code path (`npm run verify:local`) — all seven checks `PASS`
 `deployment.local.json` (git-ignored) holds the full record. Reproduce with:
 `npm run env:up && npm run wait:dust && npm run deploy:local && npm run verify:local`.
 
-### Preview testnet
+### Preview testnet (deployed and verified)
 
-A Preview deployment (`npm run deploy:preview`) is prepared: the deployer
-wallet is configured, its public address is recorded below, and the full sync +
-deploy + verify workflow is documented above. The contract record is filled in
-here once the deployment lands.
+Deployed with the repository's own tooling (`npm run deploy:preview`) against
+the Preview testnet, then independently re-verified through a separate
+indexer-only code path (`npm run verify:preview`) — all seven checks `PASS`.
 
 | Field | Value |
 | --- | --- |
 | Network | `preview` (network id `preview`) |
+| Contract address | `30c8aefd8cd90f20ec30eb700a6d069dca70f9ea5b950a1e7dc1f4056bf0e29c` |
+| Deploy transaction id | `00c60800841972d64ed706ffb8ffe05b7237913dfecd360f69897ed04c76042794` |
 | Deployer wallet address | `mn_addr_preview15c9f7e5p8duhr83tlk4fzzj4ngqm0gxm5peduza4der29t5lr6yq3pz27a` |
-| Deployer NIGHT balance | _pending faucet drip — fresh wallet, supersedes the earlier deployer address whose seed was lost_ |
-| Contract address | _pending deployment — see above_ |
-| Verification | `npm run verify:preview` |
+| Deployer NIGHT balance | 5,000,000,000 tNIGHT, dust registered for fees |
+| Constructor args | `reservePrice=1000`, `bidDeadline=1790487029`, `revealDeadline=1790573429` |
+| Compiler | `compact` 0.31.1, language version 0.23 |
+| Verification | `npm run verify:preview` — `VERIFIED`, state re-read from the Preview indexer |
 
 The funding is verifiable by anyone, with no secret, straight from the indexer:
 
