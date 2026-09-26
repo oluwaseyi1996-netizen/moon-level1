@@ -14,7 +14,9 @@
  */
 
 import { waitForFunds, type EnvironmentConfiguration } from '@midnight-ntwrk/testkit-js';
+import type { FacadeState } from '@midnight-ntwrk/wallet-sdk';
 import type { Logger } from 'pino';
+import * as Rx from 'rxjs';
 import WebSocket from 'ws';
 
 import type { NetworkConfig, WalletSecret } from './config.js';
@@ -41,6 +43,57 @@ export const unshieldedAddress = (wallet: MidnightWalletProvider): string =>
 
 
 
+/** NIGHT the wallet's synced state currently shows (the native token's raw type is all zeros). */
+const walletNightBalance = (state: FacadeState): bigint =>
+  state.unshielded.balances[NIGHT_TOKEN_TYPE] ?? 0n;
+
+const dustSettleTimeoutMs = (): number =>
+  Number(process.env['MIDNIGHT_DUST_SETTLE_TIMEOUT_MS'] ?? 180_000);
+
+/**
+ * Wait for a dust registration that the testkit just submitted to land.
+ *
+ * `waitForFunds` registers the wallet's NIGHT UTXOs for dust generation when it
+ * holds none, and that transaction spends the NIGHT UTXO before re-creating it
+ * in the same transaction. The balance `waitForFunds` returns - and the wallet's
+ * own view point - can read 0 NIGHT / 0 DUST for a funded wallet until it
+ * settles, which previously made a funded deploy look unfunded. Watch the
+ * wallet's state stream until the NIGHT and spendable dust are both back, then
+ * report the reclaimed NIGHT balance (0 if it never settles within the timeout).
+ */
+const awaitDustRegistrationSettlement = async (
+  logger: Logger,
+  wallet: MidnightWalletProvider,
+): Promise<bigint> => {
+  const timeout = dustSettleTimeoutMs();
+  logger.info(`NIGHT is not visible yet; waiting up to ${timeout}ms for dust registration to settle...`);
+  try {
+    const settled = await Rx.firstValueFrom(
+      wallet.wallet.state().pipe(
+        Rx.tap((state) =>
+          logger.info(
+            `settling: NIGHT=${walletNightBalance(state)} dustCoins=${state.dust.availableCoins.length}`,
+          ),
+        ),
+        Rx.filter(
+          (state) => walletNightBalance(state) > 0n && state.dust.availableCoins.length > 0,
+        ),
+        Rx.timeout({
+          each: timeout,
+          with: () =>
+            Rx.throwError(() => new Error(`dust registration did not settle within ${timeout}ms`)),
+        }),
+      ),
+    );
+    return walletNightBalance(settled);
+  } catch (error) {
+    logger.warn(
+      `Dust registration did not settle: ${error instanceof Error ? error.message : String(error)}`,
+    );
+    return 0n;
+  }
+};
+
 /**
  * Ensure the wallet holds NIGHT, dripping from the network faucet when it is
  * empty and the network exposes a drip endpoint, then register NIGHT UTXOs so
@@ -60,6 +113,11 @@ export const ensureFunded = async (
     logger.info(`Requesting funds from the '${config.name}' faucet if the wallet is empty...`);
   }
 
+  // Note the balance before the testkit's flow runs. If the wallet holds NIGHT
+  // now but reports none afterwards, the dip is the dust-registration side
+  // effect handled below, not an actually unfunded wallet.
+  const hadNight = walletNightBalance(await Rx.firstValueFrom(wallet.wallet.state())) > 0n;
+
   let balance: bigint;
   try {
     balance = await waitForFunds(wallet.wallet, env, useFaucet, wallet.unshieldedKeystore);
@@ -70,6 +128,14 @@ export const ensureFunded = async (
     const detail = error instanceof Error ? error.message : String(error);
     logger.warn(`Faucet request did not succeed (${detail}); continuing with the current balance.`);
     balance = await waitForFunds(wallet.wallet, env, false, wallet.unshieldedKeystore);
+  }
+
+  // When the wallet had NIGHT but `waitForFunds` registered its UTXOs for dust
+  // generation, that registration spends the NIGHT UTXO and the value it returns
+  // (and the state right after) can read 0 until the transaction settles. Wait
+  // for the settlement instead of misreporting the wallet as unfunded.
+  if (balance === 0n && hadNight) {
+    balance = await awaitDustRegistrationSettlement(logger, wallet);
   }
 
   logger.info(`NIGHT balance on '${config.name}': ${balance}`);
