@@ -299,15 +299,15 @@ here once the deployment lands.
 | Field | Value |
 | --- | --- |
 | Network | `preview` (network id `preview`) |
-| Deployer wallet address | `mn_addr_preview1l29h770qyj5jse7j8lua7443wp8n8zmsurwh4z9ujad98e5xw36qpchln9` |
-| Deployer NIGHT balance | _pending faucet drip — the address supersedes the earlier deployer, whose seed was lost_ |
+| Deployer wallet address | `mn_addr_preview15c9f7e5p8duhr83tlk4fzzj4ngqm0gxm5peduza4der29t5lr6yq3pz27a` |
+| Deployer NIGHT balance | _pending faucet drip — fresh wallet, supersedes the earlier deployer address whose seed was lost_ |
 | Contract address | _pending deployment — see above_ |
 | Verification | `npm run verify:preview` |
 
 The funding is verifiable by anyone, with no secret, straight from the indexer:
 
 ```bash
-npm run check:preview -- mn_addr_preview1l29h770qyj5jse7j8lua7443wp8n8zmsurwh4z9ujad98e5xw36qpchln9
+npm run check:preview -- mn_addr_preview15c9f7e5p8duhr83tlk4fzzj4ngqm0gxm5peduza4der29t5lr6yq3pz27a
 ```
 
 It exits `0` once the drip lands (and `1` while the address is still empty), so
