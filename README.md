@@ -315,6 +315,11 @@ npm run check:preview -- mn_addr_preview15c9f7e5p8duhr83tlk4fzzj4ngqm0gxm5peduza
 It exits `0` once the drip lands (and `1` while the address is still empty), so
 re-run it rather than trusting the row above.
 
+The full auction lifecycle is exercised end to end against Preview by
+`npm run test:e2e:preview`, which deploys a fresh instance and drives a complete
+commit → close → reveal → finalize auction with real zero-knowledge proofs and
+real on-chain state reads — all five tests `PASS`.
+
 The deployer wallet was regenerated for this submission: its 32-byte seed is
 cryptographically random, lives only in the git-ignored `.env.preview`, and was
 never committed or transmitted anywhere. Its public address is stable and
